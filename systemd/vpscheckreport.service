@@ -1,0 +1,8 @@
+[Unit]
+Description=VPSCheckReport daily Ubuntu upgrade and security audit
+Wants=network-online.target
+After=network-online.target
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/vpscheck-maintain
+TimeoutStartSec=3h
