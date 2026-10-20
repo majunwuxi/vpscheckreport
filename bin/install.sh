@@ -19,12 +19,13 @@ ask '输入 YES 继续：' confirm
 for c in python3 ss find timeout flock curl openssl; do command -v "$c" >/dev/null || { echo "缺少依赖：$c"; exit 1; }; done
 backup="/var/backups/vpscheckreport/$(date -u +%Y%m%dT%H%M%SZ)"
 install -d -m 0700 "$backup" /etc/vpscheckreport /var/lib/vpscheckreport /var/log/vpscheckreport /usr/local/lib/vpscheckreport
-for f in /usr/local/sbin/vpscheck-audit /usr/local/sbin/vpscheck-maintain /usr/local/lib/vpscheckreport/ssh-attack-report.py /usr/local/lib/vpscheckreport/mail-send.py /etc/vpscheckreport/config /etc/vpscheckreport/audit.conf /etc/vpscheckreport/mail.ini /etc/systemd/system/vpscheckreport.service /etc/systemd/system/vpscheckreport.timer; do
+for f in /usr/local/sbin/vpscheck-audit /usr/local/sbin/vpscheck-maintain /usr/local/lib/vpscheckreport/ssh-attack-report.py /usr/local/lib/vpscheckreport/ssh-isolation.py /usr/local/lib/vpscheckreport/mail-send.py /etc/vpscheckreport/config /etc/vpscheckreport/audit.conf /etc/vpscheckreport/mail.ini /etc/systemd/system/vpscheckreport.service /etc/systemd/system/vpscheckreport.timer; do
  if [[ -f "$f" ]]; then mkdir -p "$backup$(dirname "$f")"; cp -a "$f" "$backup$f"; fi
 done
 install -m 0755 "$ROOT/bin/vpscheck-audit.sh" /usr/local/sbin/vpscheck-audit
 install -m 0755 "$ROOT/bin/vpscheck-maintain.sh" /usr/local/sbin/vpscheck-maintain
 install -m 0755 "$ROOT/bin/ssh-attack-report.py" /usr/local/lib/vpscheckreport/ssh-attack-report.py
+install -m 0755 "$ROOT/bin/ssh-isolation.py" /usr/local/lib/vpscheckreport/ssh-isolation.py
 install -m 0755 "$ROOT/bin/mail-send.py" /usr/local/lib/vpscheckreport/mail-send.py
 install -m 0644 "$ROOT/systemd/vpscheckreport.service" /etc/systemd/system/vpscheckreport.service
 install -m 0644 "$ROOT/systemd/vpscheckreport.timer" /etc/systemd/system/vpscheckreport.timer
