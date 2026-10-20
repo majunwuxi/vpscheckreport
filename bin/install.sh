@@ -30,7 +30,36 @@ install -m 0755 "$ROOT/bin/mail-send.py" /usr/local/lib/vpscheckreport/mail-send
 install -m 0644 "$ROOT/systemd/vpscheckreport.service" /etc/systemd/system/vpscheckreport.service
 install -m 0644 "$ROOT/systemd/vpscheckreport.timer" /etc/systemd/system/vpscheckreport.timer
 if [[ ! -e /etc/vpscheckreport/config ]]; then printf 'ALLOW_AUTOREMOVE=false\n' > /etc/vpscheckreport/config; chmod 600 /etc/vpscheckreport/config; fi
-if [[ ! -e /etc/vpscheckreport/mail.ini ]]; then
+# 已有 SMTP 配置时，只有关键字段完整且密码非空才直接复用。
+# 不读取或输出密码内容到安装日志；验证失败则中止迁移，保留原配置。
+mail_config_ready=0
+if [[ -f /etc/vpscheckreport/mail.ini ]]; then
+ if python3 - <<'PY'
+import configparser
+import sys
+p='/etc/vpscheckreport/mail.ini'
+c=configparser.ConfigParser(interpolation=None)
+try:
+    with open(p,encoding='utf-8') as f:
+        c.read_file(f)
+    if not c.has_section('smtp'):
+        sys.exit(1)
+    v={k:c.get('smtp',k,fallback='').strip() for k in ('host','port','security','from','to','username','password')}
+    valid=(all(v.values()) and v['security'] in ('ssl','starttls') and
+           v['port'].isdigit() and 1 <= int(v['port']) <= 65535)
+    sys.exit(0 if valid else 1)
+except (OSError,ValueError,configparser.Error):
+    sys.exit(1)
+PY
+ then
+  mail_config_ready=1
+  echo '检测到完整的现有 SMTP 邮件配置：自动沿用，跳过密码及邮箱设置。'
+ else
+  echo '现有 SMTP 配置不完整：保留原文件，不自动覆盖。请修复配置后重新安装。' >&2
+  exit 1
+ fi
+fi
+if (( ! mail_config_ready )); then
  echo '1) 普通 SMTP  2) Gmail 应用专用密码'
  ask '选择 [1/2]：' method
  if [[ "$method" == 2 ]]; then host=smtp.gmail.com; port=465; security=ssl
