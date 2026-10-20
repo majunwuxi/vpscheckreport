@@ -52,9 +52,11 @@ for file in /usr/local/sbin/daily-apt-upgrade.sh /usr/local/sbin/wellmax-vps-aud
 done
 if crontab -l 2>/dev/null | grep -Eq 'daily-apt-upgrade|wellmax-vps-audit'; then legacy=1; fi
 if grep -REql 'daily-apt-upgrade|wellmax-vps-audit' /etc/cron.d /etc/cron.daily /etc/crontab 2>/dev/null; then legacy=1; fi
-if ((legacy));then
- echo 'Legacy audit installation detected. New timer NOT activated. Test first; migration requires explicit manual approval.'
+# Staging-only: do not activate any timer until migration tests pass.
+systemctl disable --now vpscheckreport.timer 2>/dev/null || true
+if ((legacy)); then
+ echo '检测到旧版：仅安装新版文件；保留旧版定时任务。'
 else
- systemctl enable --now vpscheckreport.timer
+ echo '首次安装：仅安装新版文件；安全审查通过后再启用定时任务。'
 fi
 echo 'Installed. Test: sudo /usr/local/sbin/vpscheck-audit'
