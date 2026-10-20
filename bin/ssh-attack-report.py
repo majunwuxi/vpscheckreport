@@ -34,7 +34,7 @@ def authlogs(start,end,root):
    if not m or 'sshd[' not in line:continue
    try:
     year=start.year;month=MONTHS[m[1]];clock=dt.time.fromisoformat(m[3])
-    candidates=[dt.datetime(y,month,int(m[2]),clock.hour,clock.minute,clock.second).astimezone().astimezone(TZ) for y in (year-1,year,year+1)]
+    candidates=[dt.datetime(y,month,int(m[2]),clock.hour,clock.minute,clock.second,tzinfo=dt.datetime.now().astimezone().tzinfo).astimezone(TZ) for y in (year-1,year,year+1)]
     stamp=min(candidates,key=lambda x:abs((x-start).total_seconds()))
     if start<=stamp<end:yield line
    except (ValueError,KeyError):continue
@@ -52,7 +52,7 @@ def bans(start,end,root):
   for line in reader(path):
    m=re.match(r'^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d),',line)
    if not m:continue
-   try:t=dt.datetime.strptime(m[1],'%Y-%m-%d %H:%M:%S').astimezone().astimezone(TZ)
+   try:t=dt.datetime.strptime(m[1],'%Y-%m-%d %H:%M:%S').replace(tzinfo=dt.datetime.now().astimezone().tzinfo).astimezone(TZ)
    except ValueError:continue
    if not start<=t<end:continue
    hit=re.search(r'fail2ban\.actions.*?\bBan\s+([0-9a-fA-F:.]+)\b',line)
