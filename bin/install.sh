@@ -42,7 +42,13 @@ if [[ ! -e /etc/vpscheckreport/mail.ini ]]; then
  [[ "$port" =~ ^[0-9]+$ ]] && (( port >= 1 && port <= 65535 )) || { echo '无效端口'; exit 1; }
  ask '发件邮箱：' sender
  ask '收件邮箱：' recipient
- ask '登录用户名：' username
+ ask '登录用户名（回车默认与发件邮箱相同）：' username
+ username="${username:-$sender}"
+ if [[ "$host" == smtp.gmail.com && "$username" != "$sender" ]]; then
+  echo '警告：Gmail 登录用户名与发件邮箱不同。'
+  ask '继续使用不同账号？输入 YES：' mismatch_ok
+  [[ "$mismatch_ok" == YES ]] || exit 1
+ fi
  printf 'SMTP 密码 / Gmail 应用专用密码：' >/dev/tty
  IFS= read -rs password <&3; printf '\n' >/dev/tty
  export HOST="$host" PORT="$port" SEC="$security" FROM="$sender" TO="$recipient" USERNAME="$username" PASSWORD="$password"
@@ -56,6 +62,19 @@ PY
  chmod 600 /etc/vpscheckreport/mail.ini
 fi
 systemctl daemon-reload
-systemctl disable --now vpscheckreport.timer >/dev/null 2>&1 || true
+echo '正在发送 SMTP 验证邮件……'
+test_body="$(mktemp)"
+printf 'VPSCheckReport SMTP verification\nHost: %s\nTime: %s\n' "$(hostname -f 2>/dev/null || hostname)" "$(date -u +%FT%TZ)" > "$test_body"
+if python3 /usr/local/lib/vpscheckreport/mail-send.py --subject '[VPSCheckReport] SMTP installation verification' --body "$test_body"; then
+ echo 'SMTP 验证：服务器已接受测试邮件。请检查收件箱（含垃圾邮件）。'
+else
+ echo 'SMTP 验证失败：请修正 /etc/vpscheckreport/mail.ini 后重试。' >&2
+ rm -f "$test_body"
+ exit 1
+fi
+rm -f "$test_body"
+if ! systemctl is-enabled --quiet vpscheckreport.timer 2>/dev/null; then
+ systemctl disable --now vpscheckreport.timer >/dev/null 2>&1 || true
+fi
 echo "安装完毕，新版定时器未启用；旧版未修改。备份：$backup"
 echo '只读巡检：sudo /usr/local/sbin/vpscheck-audit --quiet --exit-zero'
