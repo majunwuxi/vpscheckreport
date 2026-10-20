@@ -12,8 +12,8 @@ for f in /usr/local/sbin/daily-apt-upgrade.sh /usr/local/sbin/wellmax-vps-audit;
 for u in daily-apt-upgrade.timer daily-apt-upgrade.service; do systemctl cat "$u" >/dev/null 2>&1 && LEGACY=1; done
 if crontab -l 2>/dev/null | grep -Eq 'daily-apt-upgrade|wellmax-vps-audit'; then LEGACY=1; fi
 if grep -REql 'daily-apt-upgrade|wellmax-vps-audit' /etc/cron.d /etc/cron.daily /etc/crontab 2>/dev/null; then LEGACY=1; fi
-echo '安全预览安装：只安装文件，不启用新版定时器。'
-(( LEGACY )) && echo '检测到旧版，旧版程序与调度保持不变。'
+echo '自动升级安装：验证邮件后自动切换新旧定时器，并备份旧版代码。'
+(( LEGACY )) && echo '检测到旧版：成功切换后停用旧版调度并归档旧脚本。'
 ask '输入 YES 继续：' confirm
 [[ "$confirm" == YES ]] || { echo '取消'; exit 0; }
 for c in python3 ss find timeout flock curl openssl; do command -v "$c" >/dev/null || { echo "缺少依赖：$c"; exit 1; }; done
@@ -74,8 +74,58 @@ else
  exit 1
 fi
 rm -f "$test_body"
-if ! systemctl is-enabled --quiet vpscheckreport.timer 2>/dev/null; then
- systemctl disable --now vpscheckreport.timer >/dev/null 2>&1 || true
+# 自动迁移已知的 Wellmax 旧版 systemd 调度；未知 cron 引用必须人工确认。
+legacy_units=(daily-apt-upgrade.timer daily-apt-upgrade.service)
+legacy_files=(/usr/local/sbin/daily-apt-upgrade.sh /usr/local/sbin/wellmax-vps-audit /etc/systemd/system/daily-apt-upgrade.timer /etc/systemd/system/daily-apt-upgrade.service)
+if crontab -l 2>/dev/null | grep -Eq 'daily-apt-upgrade|wellmax-vps-audit' || grep -REq 'daily-apt-upgrade|wellmax-vps-audit' /etc/cron.d /etc/cron.daily /etc/crontab 2>/dev/null; then
+ echo '检测到旧版 cron 调度：为避免重复执行，已停止自动切换；请先检查 cron 来源。' >&2
+ exit 1
 fi
-echo "安装完毕，新版定时器未启用；旧版未修改。备份：$backup"
-echo '只读巡检：sudo /usr/local/sbin/vpscheck-audit --quiet --exit-zero'
+for f in "${legacy_files[@]}"; do
+ if [[ -f "$f" ]]; then
+  mkdir -p "$backup$(dirname "$f")"
+  cp -a "$f" "$backup$f"
+ fi
+done
+old_enabled=0
+old_active=0
+systemctl is-enabled --quiet daily-apt-upgrade.timer 2>/dev/null && old_enabled=1
+systemctl is-active --quiet daily-apt-upgrade.timer 2>/dev/null && old_active=1
+if systemctl is-active --quiet daily-apt-upgrade.service 2>/dev/null; then
+ echo '旧版维护服务仍在执行，拒绝切换；稍后重新运行安装程序。' >&2
+ exit 1
+fi
+if systemctl is-active --quiet vpscheckreport.service 2>/dev/null; then
+ echo '新版维护服务正在执行，拒绝切换。' >&2
+ exit 1
+fi
+rollback_migration() {
+ local rc=$?
+ trap - ERR
+ echo "切换失败（状态码 $rc），正在恢复原定时器状态……" >&2
+ systemctl disable --now vpscheckreport.timer >/dev/null 2>&1 || true
+ if (( old_enabled )); then systemctl enable daily-apt-upgrade.timer >/dev/null 2>&1 || true; fi
+ if (( old_active )); then systemctl start daily-apt-upgrade.timer >/dev/null 2>&1 || true; fi
+ exit "$rc"
+}
+trap rollback_migration ERR
+echo '正在自动切换新旧定时任务……'
+systemctl disable --now daily-apt-upgrade.timer 2>/dev/null || {
+ if (( old_enabled || old_active )); then echo '无法停用旧版定时器' >&2; false; fi
+}
+systemctl enable --now vpscheckreport.timer
+systemctl is-enabled --quiet vpscheckreport.timer
+systemctl is-active --quiet vpscheckreport.timer
+if systemctl is-active --quiet daily-apt-upgrade.timer; then
+ echo '旧版定时器仍在运行，拒绝归档旧代码。' >&2
+ false
+fi
+# 只有在新调度验证成功后，才将旧版可执行脚本移出运行路径。
+# systemd 单元保留为 disabled，便于故障回退；所有原始文件已备份。
+for f in /usr/local/sbin/daily-apt-upgrade.sh /usr/local/sbin/wellmax-vps-audit; do
+ if [[ -f "$f" ]]; then mv "$f" "$backup$f"; fi
+done
+trap - ERR
+echo "升级完成：新版定时器已启用，旧版定时器已停用；旧版脚本已归档。备份：$backup"
+echo '计划执行：每天北京时间 00:15，随机延迟最多 5 分钟。'
+echo '检查：systemctl list-timers --all vpscheckreport.timer'
