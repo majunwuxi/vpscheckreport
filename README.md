@@ -1,38 +1,48 @@
-# VPSCheckReport
+# VPSCheckReport 3.0 preview
 
-Ubuntu VPS 每日系统更新、安全巡检与邮件报告。支持普通 SMTP 和 Gmail 应用专用密码。
+Ubuntu 每日更新、安全巡检、SSH 登录攻击与 Fail2ban 封禁统计。邮件支持普通 SMTP STARTTLS/SSL 和 Gmail 应用专用密码。
 
-## 当前状态：预览版（不要在生产环境直接切换）
+**预览版：目前通过本地静态检查及 4 项 SSH 统计单元测试，尚未在 GreenCloud 上端到端验证；禁止直接切换生产调度。**
 
-一键安装入口已加入，但当前只部署文件，不启用新定时器。旧版巡检的完整功能尚未迁移，SSH 日志统计也需继续验证时区、日志轮转和事件去重。现阶段仅适合隔离测试机或经备份后的人工测试，不能代替生产版旧程序。
-
-## 安装
+## 一键安装（仅部署，不启用）
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/majunwuxi/vpscheckreport/main/install.sh | sudo bash
 ```
 
-安装时选择普通 SMTP（STARTTLS/SSL）或 Gmail 应用专用密码（smtp.gmail.com:465）；配置保存在 /etc/vpscheckreport/mail.ini，权限 0600，不上传 GitHub。
+需要 SSH 交互终端。安装会检查旧版服务、cron 和脚本，保留旧版程序和定时任务；无论有无旧版，**均不自动启用新版 timer**。SMTP 密码配置为仅 root 可读。
 
-**迁移提醒**：本版是基于现有部署脚本的部分源码重新实现，并非对旧版全部功能的逐字复制。旧版的 Docker 健康、证书到期、基线变更等专项检查尚未完整迁移。安装程序不覆盖旧版脚本，且无论是否检测到旧版，都不会自动启用新版定时器，以防重复更新和重复发信。
+安装后仅执行巡检（不更新、不发邮件）：
 
-测试安全审计（不更新系统、不发邮件）：
 ```bash
-sudo /usr/local/sbin/vpscheck-audit
+sudo /usr/local/sbin/vpscheck-audit --quiet --exit-zero
 ```
 
-测试邮件：
+## 兼容与变更
+
+- 基于 GreenCloud 原版 v2.0.1 完整迁入 SSH、firewall、Fail2ban、systemd、磁盘、内存、Docker、TLS、sudo、监听端口、authorized_keys、SUID/SGID、capabilities、备份与 reboot 检查。
+- 新版状态目录为 `/var/lib/vpscheckreport/audit`，**首次执行会建立新基线，尚未继承旧基线**。
+- 更新保留原版完整日志、审计状态与邮件摘要；为避免删除关键软件包，默认采用 `apt-get -y --no-remove upgrade` 而非 `dist-upgrade`；默认跳过 `autoremove`（设置 `ALLOW_AUTOREMOVE=true` 可启用）。
+- 攻击窗口为北京时间前一日 01:00 到当日 01:00，计划 01:15 运行，公网 IP 排名排除 Tailscale/CGNAT。
+- 日报含 SSH 攻击统计，JSON 写入 `/var/lib/vpscheckreport/latest-attacks.json`。
+
+## 备份和回滚
+
+已有新版文件会备份至 `/var/backups/vpscheckreport/<时间戳>/`。在克隆仓库目录中执行：
+
 ```bash
-echo 'VPSCheckReport SMTP test' | sudo tee /tmp/vpscheck-mail-test.txt >/dev/null
-sudo /usr/local/lib/vpscheckreport/mail-send.py --subject 'VPSCheckReport test' --body /tmp/vpscheck-mail-test.txt
+sudo bash bin/rollback.sh /var/backups/vpscheckreport/<时间戳>
 ```
 
-**仅在完成代码审查、验证并确认旧版调度方式之后**，才能人工迁移：
+回滚停止新版 timer 并恢复备份中存在的文件，不自动删除首次安装文件、不改变旧版调度。
+
+## 验证
+
 ```bash
-sudo systemctl disable --now daily-apt-upgrade.timer
-sudo systemctl enable --now vpscheckreport.timer
+bash -n install.sh bin/*.sh
+python3 -m py_compile bin/*.py
+python3 -m unittest discover -s tests -v
+systemd-analyze calendar '*-*-* 01:15:00 Asia/Shanghai'
 ```
 
-**攻击统计**：使用 journalctl SSH 日志，必要时回退 auth.log*，并读取 fail2ban.log*。统计窗口是北京时间前一天 01:00 到当天 01:00，窗口结束不包含。失败登录与封禁次数分开计算。100.64.0.0/10 为共享地址段（含 Tailscale），不作为公网来源排名。缺失数据报告“无法统计”，不假装是零。跨服务器排行榜需要从多台机器的结构化报告进一步汇总。
-
-安全提示：禁止上传 /etc/msmtprc、mail.ini、密码、私钥与真实生产日志。
+离线 4 项测试通过，但 SMTP 实发、Ubuntu apt 流程、日志轮转覆盖、旧版到新版切换、回滚演练仍需在隔离测试机验证。参见 `docs/MIGRATION_CHECKLIST.md`。
