@@ -1,7 +1,7 @@
 [Unit]
 Description=VPSCheckReport daily timer
 [Timer]
-OnCalendar=*-*-* 00:15:00 Asia/Shanghai
+OnCalendar=*-*-* 01:15:00 Asia/Shanghai
 Persistent=true
 RandomizedDelaySec=5m
 [Install]
