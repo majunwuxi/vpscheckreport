@@ -103,6 +103,9 @@ rollback_migration() {
  local rc=$?
  trap - ERR
  echo "切换失败（状态码 $rc），正在恢复原定时器状态……" >&2
+ for f in /usr/local/sbin/daily-apt-upgrade.sh /usr/local/sbin/wellmax-vps-audit; do
+  if [[ ! -e "$f" && -f "$backup$f" ]]; then cp -a "$backup$f" "$f" || true; fi
+ done
  systemctl disable --now vpscheckreport.timer >/dev/null 2>&1 || true
  if (( old_enabled )); then systemctl enable daily-apt-upgrade.timer >/dev/null 2>&1 || true; fi
  if (( old_active )); then systemctl start daily-apt-upgrade.timer >/dev/null 2>&1 || true; fi
