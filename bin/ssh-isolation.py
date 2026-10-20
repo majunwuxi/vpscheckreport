@@ -44,7 +44,7 @@ def check_family(raw,port,v6=False):
    or re.fullmatch(r'-p (icmp|ipv6-icmp) .+ -j ACCEPT',r)
    or re.fullmatch(r'-s fe80::/10 -p ipv6-icmp .+ -j ACCEPT',r)
    or re.fullmatch(r'-s fe80::/10 -d fe80::/10 -p udp .+ -j ACCEPT',r)
-   or re.fullmatch(r'-d (224\\.0\\.0\\.251/32|239\\.255\\.255\\.250/32|ff02::fb/128|ff02::f/128) -p udp .+ -j ACCEPT',r)):
+   or re.fullmatch(r'-d (224\.0\.0\.251/32|239\.255\.255\.250/32|ff02::fb/128|ff02::f/128) -p udp .+ -j ACCEPT',r)):
    raise ValueError('unknown pre-user rule: '+r)
  if not v6:
   nl=chains.get('ufw-not-local',[])
@@ -54,9 +54,9 @@ def check_family(raw,port,v6=False):
 def check_nft(raw):
  table=None
  for line in raw.splitlines():
-  m=re.match(r'^table (\\S+) (\\S+) \\{',line)
+  m=re.match(r'^table (\S+) (\S+) \{',line)
   if m:table=m.groups()
-  if re.search(r'\\bhook (input|prerouting|ingress)\\b',line):
+  if re.search(r'\bhook (input|prerouting|ingress)\b',line):
    if not table or table[0] not in ('ip','ip6'):raise ValueError('unknown nft hook family')
    if 'hook input' in line and table[1]=='filter' and 'priority filter; policy drop;' in line:continue
    if 'hook input' in line and table[1]=='mangle' and 'priority mangle; policy accept;' in line:continue
@@ -64,7 +64,7 @@ def check_nft(raw):
    if 'hook input' in line and table[1]=='nat':continue
    raise ValueError('unknown nft ingress hook')
  for family in ('ip','ip6'):
-  if not re.search(r'table '+family+r' filter \\{.*?hook input priority filter; policy drop;',raw,re.S):
+  if not re.search(r'table '+family+r' filter \{.*?hook input priority filter; policy drop;',raw,re.S):
    raise ValueError('missing nft input drop hook')
 
 def verify(v4,v6,nft,port):
